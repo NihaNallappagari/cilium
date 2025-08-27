@@ -203,23 +203,31 @@ func (info *RoutingInfo) gatewayRoutes(ifindex, tableID int) []*netlink.Route {
 	}
 
 	// IPv6 routes
-	return []*netlink.Route{
-		{
-			LinkIndex: ifindex,
-			Dst:       &net.IPNet{IP: info.Gateway, Mask: net.CIDRMask(128, 128)},
-			Scope:     netlink.SCOPE_LINK,
-			Table:     tableID,
-			Protocol:  linux_defaults.RTProto,
-		},
+    ipv6Routes := []*netlink.Route{
+        {
+            LinkIndex: ifindex,
+            Dst:       &net.IPNet{IP: info.Gateway, Mask: net.CIDRMask(128, 128)},
+            Scope:     netlink.SCOPE_LINK,
+            Table:     tableID,
+            Protocol:  linux_defaults.RTProto,
+        },
+    }
 
-		{
-			Dst:      &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)},
-			Table:    tableID,
-			Gw:       info.Gateway,
-			Protocol: linux_defaults.RTProto,
-		},
-	}
-
+    // For IPv6 link-local gateways, the default route also needs LinkIndex
+    defaultRoute := &netlink.Route{
+        Dst:      &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)},
+        Table:    tableID,
+        Gw:       info.Gateway,
+        Protocol: linux_defaults.RTProto,
+    }
+    
+    // Check if gateway is link-local (fe80::/64)
+    if info.Gateway.IsLinkLocalUnicast() {
+        defaultRoute.LinkIndex = ifindex
+    }
+    
+    ipv6Routes = append(ipv6Routes, defaultRoute)
+    return ipv6Routes
 }
 
 func (info *RoutingInfo) installRoutes(ifindex, tableID int) error {
